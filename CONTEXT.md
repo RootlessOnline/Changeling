@@ -126,11 +126,11 @@ Grammar must be perfectly lossless — validated at boot.
 ## Build Progress
 
 ### Phase 1 — Chain memory core
-- [ ] SQLite schema (chain_blocks table)
-- [ ] Block writer (append-only, hash chaining)
-- [ ] Block reader (by layer, by type, by fault)
-- [ ] Fault checker (pre-task lookup)
-- [ ] Tests passing
+- [x] SQLite schema (chain_blocks table)
+- [x] Block writer (append-only, hash chaining)
+- [x] Block reader (by layer, by type, by fault)
+- [x] Fault checker (pre-task lookup)
+- [x] Tests passing
 
 ### Phase 2 — Sefirot scorer
 - [ ] Ollama call wrapper
