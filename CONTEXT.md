@@ -173,3 +173,4 @@ Grammar must be perfectly lossless — validated at boot.
 2026-03-27 — Phase 1 complete: chain memory core built and 23 tests passing
 2026-03-27 — .claude/ excluded from repo (contains local Claude Code settings)
 2026-03-27 — Phase 2 not yet started — awaiting strategy confirmation from web chat
+2026-03-27 — Phase 1 complete, 23 tests passing. Claude Code must update CONTEXT.md checkboxes and Decisions Log before every push — this is mandatory.
