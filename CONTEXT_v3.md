@@ -611,12 +611,12 @@ TIER 4 — Emergent from Tiers 1-3 being healthy
 ## Build Progress — Revised
 
 ### Phase 1 — Chain Memory Core
-- [ ] SQLite schema (with consequence + commitment_level fields)
-- [ ] Block writer (append-only, hash chaining)
-- [ ] Block reader (by layer, by type, by fault)
-- [ ] Fault checker
-- [ ] Write-ahead log
-- [ ] Tests
+- [x] SQLite schema (with consequence + commitment_level fields)
+- [x] Block writer (append-only, hash chaining)
+- [x] Block reader (by layer, by type, by fault)
+- [x] Fault checker
+- [x] Write-ahead log
+- [x] Tests (67 passing)
 
 ### Phase 2 — Soul Graph Topology
 - [ ] NetworkX node graph with 11-dimension Sefirot vectors
@@ -706,3 +706,15 @@ TIER 4 — Emergent from Tiers 1-3 being healthy
 ---
 
 *End of document. Append new sessions below this line.*
+
+---
+
+## Session 2026-03-28
+
+2026-03-28 — Phase 1 complete. 67 tests passing across test_chain, test_queries, test_faults, test_wal.
+2026-03-28 — changeling/ package built: database.py, chain_writer.py, chain_reader.py, fault_checker.py, wal.py
+2026-03-28 — Hash covers all immutable fields; consequence excluded (mutable Malkuth feedback, filled post-hoc)
+2026-03-28 — Genesis block: prev_hash="", commitment_level="sealed"
+2026-03-28 — record_consequence() is the only permitted chain mutation
+2026-03-28 — WAL: plain newline-delimited JSON, pending→committed→interrupted lifecycle, crash recovery verified
+2026-03-28 — Phase 2 not started — awaiting design confirmation
