@@ -174,3 +174,8 @@ Grammar must be perfectly lossless — validated at boot.
 2026-03-27 — .claude/ excluded from repo (contains local Claude Code settings)
 2026-03-27 — Phase 2 not yet started — awaiting strategy confirmation from web chat
 2026-03-27 — Phase 1 complete, 23 tests passing. Claude Code must update CONTEXT.md checkboxes and Decisions Log before every push — this is mandatory.
+2026-03-27 — Phase 1 complete, 23 tests passing
+2026-03-27 — Phase 2 NOT started yet — awaiting design
+2026-03-27 — Critical design decision: Sefirot is a topology not 11 independent scores. Three pillars (Mercy/Severity/Balance), three triads (Supernal/Ethical/Astral), two flows (lightning bolt down = creation, return path up = reflection). 22 paths define relationship quality between nodes. This must be fully designed before Phase 2 code is written.
+2026-03-27 — Switching to Opus to design the three triads properly before any Phase 2 code is written
+2026-03-27 — Sonnet vs Opus rule: Opus for deep conceptual design (Sefirot triads, ZCL grammar, Da'at architecture). Sonnet for everything else.
