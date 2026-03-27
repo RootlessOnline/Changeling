@@ -1,21 +1,29 @@
 """
-Phase 1 tests — chain memory core.
-Uses an in-memory SQLite database so no files are created on disk.
+test_chain.py — Chain integrity, append-only guarantee, genesis block.
+
+These tests verify the foundational guarantees of chain memory:
+  - The chain starts with a genesis block
+  - Each block correctly links to the previous via prev_hash
+  - Hashes are recomputed correctly
+  - Tampering is detected
+  - The chain is truly append-only (existing blocks cannot be changed
+    without breaking integrity)
+  - consequence field can be updated (the sole permitted mutation)
 """
 
 import pytest
 import sqlite3
-from core.chain_memory import (
-    init_db,
+
+from changeling.database import open_db
+from changeling.wal import WriteAheadLog
+from changeling.chain_writer import (
     append_block,
-    read_by_layer,
-    read_by_type,
-    read_by_fault,
-    read_recent,
-    read_all,
-    check_faults,
+    ensure_genesis,
     verify_chain,
+    record_consequence,
+    compute_hash,
 )
+from changeling.chain_reader import full_chain, latest
 
 
 # ---------------------------------------------------------------------------
@@ -23,207 +31,122 @@ from core.chain_memory import (
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
+def wal(tmp_path):
+    return WriteAheadLog(tmp_path / "test.wal")
+
+
+@pytest.fixture
 def db():
-    """Fresh in-memory chain DB for each test."""
-    conn = init_db(":memory:")
+    """Fresh in-memory chain DB per test."""
+    conn = open_db(":memory:")
     yield conn
     conn.close()
 
 
-# ---------------------------------------------------------------------------
-# Schema
-# ---------------------------------------------------------------------------
-
-def test_init_creates_table(db):
-    row = db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='chain_blocks'"
-    ).fetchone()
-    assert row is not None
+@pytest.fixture
+def db_with_genesis(db, wal):
+    ensure_genesis(db, wal)
+    return db
 
 
 # ---------------------------------------------------------------------------
-# Block writer
+# Genesis block
 # ---------------------------------------------------------------------------
 
-def test_append_single_block(db):
-    block = append_block(db, layer=1, layer_type="task",
-                         compressed_state="state_a", reasoning="reason_a")
-    assert block["prev_hash"] == "GENESIS"
-    assert block["this_hash"] and len(block["this_hash"]) == 64
-    assert block["fault"] is None
+def test_genesis_created_on_empty_chain(db, wal):
+    ensure_genesis(db, wal)
+    blocks = full_chain(db)
+    assert len(blocks) == 1
+    g = blocks[0]
+    assert g["layer"] == 0
+    assert g["layer_type"] == "genesis"
+    assert g["prev_hash"] == ""
+    assert g["reasoning"] == "Chain memory initialised."
+    assert g["commitment_level"] == "sealed"
 
 
-def test_append_chains_prev_hash(db):
-    b1 = append_block(db, layer=1, layer_type="task",
+def test_genesis_not_duplicated(db, wal):
+    ensure_genesis(db, wal)
+    ensure_genesis(db, wal)  # second call must be a no-op
+    assert len(full_chain(db)) == 1
+
+
+def test_genesis_hash_is_valid(db, wal):
+    ensure_genesis(db, wal)
+    g = full_chain(db)[0]
+    expected = compute_hash(
+        g["layer"], g["layer_type"], g["timestamp"], g["prev_hash"],
+        g["compressed_state"], g["fault"], g["reasoning"], g["commitment_level"],
+    )
+    assert g["this_hash"] == expected
+
+
+# ---------------------------------------------------------------------------
+# Block chaining
+# ---------------------------------------------------------------------------
+
+def test_first_non_genesis_block_links_to_genesis(db_with_genesis, wal):
+    genesis = full_chain(db_with_genesis)[0]
+    b = append_block(db_with_genesis, wal, layer=1, layer_type="task",
+                     compressed_state="s", reasoning="r")
+    assert b["prev_hash"] == genesis["this_hash"]
+
+
+def test_blocks_chain_sequentially(db_with_genesis, wal):
+    b1 = append_block(db_with_genesis, wal, layer=1, layer_type="task",
                       compressed_state="s1", reasoning="r1")
-    b2 = append_block(db, layer=1, layer_type="task",
+    b2 = append_block(db_with_genesis, wal, layer=1, layer_type="task",
                       compressed_state="s2", reasoning="r2")
     assert b2["prev_hash"] == b1["this_hash"]
 
 
-def test_append_with_fault(db):
-    block = append_block(db, layer=2, layer_type="reflection",
-                         compressed_state="s", reasoning="r",
-                         fault="null_pointer in module X")
-    assert block["fault"] == "null_pointer in module X"
-
-
-def test_append_is_append_only(db):
-    append_block(db, layer=1, layer_type="task", compressed_state="s", reasoning="r")
-    # Attempting a direct UPDATE should not affect the chain reader
-    db.execute("UPDATE chain_blocks SET compressed_state='tampered' WHERE id=1")
-    ok, reason = verify_chain(db)
-    assert not ok  # tamper detected
-
-
-def test_unique_hashes(db):
-    b1 = append_block(db, layer=1, layer_type="task",
+def test_each_block_has_unique_hash(db_with_genesis, wal):
+    b1 = append_block(db_with_genesis, wal, layer=1, layer_type="task",
                       compressed_state="s1", reasoning="r1",
                       timestamp="2026-01-01T00:00:00+00:00")
-    b2 = append_block(db, layer=1, layer_type="task",
+    b2 = append_block(db_with_genesis, wal, layer=1, layer_type="task",
                       compressed_state="s2", reasoning="r2",
                       timestamp="2026-01-01T00:00:01+00:00")
     assert b1["this_hash"] != b2["this_hash"]
 
 
-# ---------------------------------------------------------------------------
-# Block reader — by layer
-# ---------------------------------------------------------------------------
-
-def test_read_by_layer(db):
-    append_block(db, layer=1, layer_type="task", compressed_state="s", reasoning="r")
-    append_block(db, layer=2, layer_type="task", compressed_state="s", reasoning="r")
-    append_block(db, layer=1, layer_type="task", compressed_state="s2", reasoning="r2")
-
-    layer1 = read_by_layer(db, 1)
-    assert len(layer1) == 2
-    assert all(b["layer"] == 1 for b in layer1)
+def test_consequence_defaults_to_none(db_with_genesis, wal):
+    b = append_block(db_with_genesis, wal, layer=1, layer_type="task",
+                     compressed_state="s", reasoning="r")
+    assert b["consequence"] is None
 
 
-def test_read_by_layer_empty(db):
-    assert read_by_layer(db, 99) == []
+def test_commitment_level_sealed(db_with_genesis, wal):
+    b = append_block(db_with_genesis, wal, layer=1, layer_type="task",
+                     compressed_state="s", reasoning="r",
+                     commitment_level="sealed")
+    assert b["commitment_level"] == "sealed"
 
 
-# ---------------------------------------------------------------------------
-# Block reader — by type
-# ---------------------------------------------------------------------------
+def test_commitment_level_default_is_experimental(db_with_genesis, wal):
+    b = append_block(db_with_genesis, wal, layer=1, layer_type="task",
+                     compressed_state="s", reasoning="r")
+    assert b["commitment_level"] == "experimental"
 
-def test_read_by_type(db):
-    append_block(db, layer=1, layer_type="task",       compressed_state="s", reasoning="r")
-    append_block(db, layer=1, layer_type="reflection", compressed_state="s", reasoning="r")
-    append_block(db, layer=1, layer_type="task",       compressed_state="s", reasoning="r")
 
-    tasks = read_by_type(db, "task")
-    assert len(tasks) == 2
-    assert all(b["layer_type"] == "task" for b in tasks)
+def test_invalid_commitment_level_raises(db_with_genesis, wal):
+    with pytest.raises(ValueError):
+        append_block(db_with_genesis, wal, layer=1, layer_type="task",
+                     compressed_state="s", reasoning="r",
+                     commitment_level="maybe")
 
 
 # ---------------------------------------------------------------------------
-# Block reader — by fault
+# Chain integrity
 # ---------------------------------------------------------------------------
 
-def test_read_by_fault_all(db):
-    append_block(db, layer=1, layer_type="task", compressed_state="s", reasoning="r")
-    append_block(db, layer=1, layer_type="task", compressed_state="s", reasoning="r",
-                 fault="timeout error")
-    append_block(db, layer=2, layer_type="sleep", compressed_state="s", reasoning="r",
-                 fault="hash mismatch")
-
-    faults = read_by_fault(db)
-    assert len(faults) == 2
-
-
-def test_read_by_fault_substring(db):
-    append_block(db, layer=1, layer_type="task", compressed_state="s", reasoning="r",
-                 fault="timeout error")
-    append_block(db, layer=1, layer_type="task", compressed_state="s", reasoning="r",
-                 fault="hash mismatch")
-
-    results = read_by_fault(db, "timeout")
-    assert len(results) == 1
-    assert "timeout" in results[0]["fault"]
-
-
-def test_read_by_fault_none_when_clean(db):
-    append_block(db, layer=1, layer_type="task", compressed_state="s", reasoning="r")
-    assert read_by_fault(db) == []
-
-
-# ---------------------------------------------------------------------------
-# Block reader — recent
-# ---------------------------------------------------------------------------
-
-def test_read_recent(db):
-    for i in range(5):
-        append_block(db, layer=1, layer_type="task",
-                     compressed_state=f"s{i}", reasoning=f"r{i}")
-    recent = read_recent(db, 3)
-    assert len(recent) == 3
-    # Oldest-first ordering within the returned window
-    assert recent[0]["compressed_state"] == "s2"
-    assert recent[2]["compressed_state"] == "s4"
-
-
-def test_read_recent_fewer_than_n(db):
-    append_block(db, layer=1, layer_type="task", compressed_state="s", reasoning="r")
-    assert len(read_recent(db, 10)) == 1
-
-
-# ---------------------------------------------------------------------------
-# Fault checker (pre-task lookup)
-# ---------------------------------------------------------------------------
-
-def test_check_faults_finds_matching_type(db):
-    append_block(db, layer=1, layer_type="task", compressed_state="s", reasoning="r",
-                 fault="bad input")
-    append_block(db, layer=1, layer_type="reflection", compressed_state="s", reasoning="r",
-                 fault="loop overflow")
-
-    task_faults = check_faults(db, "task")
-    assert len(task_faults) == 1
-    assert task_faults[0]["layer_type"] == "task"
-
-
-def test_check_faults_empty_for_clean_type(db):
-    append_block(db, layer=1, layer_type="task", compressed_state="s", reasoning="r")
-    assert check_faults(db, "task") == []
-
-
-def test_check_faults_no_type_returns_all(db):
-    append_block(db, layer=1, layer_type="task", compressed_state="s", reasoning="r",
-                 fault="err1")
-    append_block(db, layer=2, layer_type="sleep", compressed_state="s", reasoning="r",
-                 fault="err2")
-    all_faults = check_faults(db, "")
-    assert len(all_faults) == 2
-
-
-# ---------------------------------------------------------------------------
-# Chain integrity verifier
-# ---------------------------------------------------------------------------
-
-def test_verify_clean_chain(db):
+def test_verify_clean_chain(db_with_genesis, wal):
     for i in range(4):
-        append_block(db, layer=1, layer_type="task",
+        append_block(db_with_genesis, wal, layer=1, layer_type="task",
                      compressed_state=f"s{i}", reasoning=f"r{i}")
-    ok, reason = verify_chain(db)
+    ok, reason = verify_chain(db_with_genesis)
     assert ok
     assert reason is None
-
-
-def test_verify_detects_hash_tampering(db):
-    append_block(db, layer=1, layer_type="task", compressed_state="s", reasoning="r")
-    db.execute("UPDATE chain_blocks SET this_hash='deadbeef' WHERE id=1")
-    ok, reason = verify_chain(db)
-    assert not ok
-    assert reason is not None
-
-
-def test_verify_detects_content_tampering(db):
-    append_block(db, layer=1, layer_type="task", compressed_state="s", reasoning="r")
-    db.execute("UPDATE chain_blocks SET reasoning='altered' WHERE id=1")
-    ok, reason = verify_chain(db)
-    assert not ok
 
 
 def test_verify_empty_chain(db):
@@ -232,19 +155,69 @@ def test_verify_empty_chain(db):
     assert reason is None
 
 
-def test_genesis_block_has_no_prev(db):
-    b = append_block(db, layer=1, layer_type="task", compressed_state="s", reasoning="r")
-    assert b["prev_hash"] == "GENESIS"
+def test_verify_detects_content_tampering(db_with_genesis, wal):
+    append_block(db_with_genesis, wal, layer=1, layer_type="task",
+                 compressed_state="s", reasoning="r")
+    db_with_genesis.execute(
+        "UPDATE chain_blocks SET reasoning = 'tampered' WHERE layer_type = 'task'"
+    )
+    ok, reason = verify_chain(db_with_genesis)
+    assert not ok
+    assert reason is not None
+
+
+def test_verify_detects_hash_tampering(db_with_genesis, wal):
+    append_block(db_with_genesis, wal, layer=1, layer_type="task",
+                 compressed_state="s", reasoning="r")
+    db_with_genesis.execute(
+        "UPDATE chain_blocks SET this_hash = 'deadbeef' WHERE layer_type = 'task'"
+    )
+    ok, reason = verify_chain(db_with_genesis)
+    assert not ok
+
+
+def test_verify_detects_prev_hash_break(db_with_genesis, wal):
+    append_block(db_with_genesis, wal, layer=1, layer_type="task",
+                 compressed_state="s", reasoning="r")
+    db_with_genesis.execute(
+        "UPDATE chain_blocks SET prev_hash = 'broken' WHERE layer_type = 'task'"
+    )
+    ok, reason = verify_chain(db_with_genesis)
+    assert not ok
 
 
 # ---------------------------------------------------------------------------
-# Read all
+# Append-only guarantee
 # ---------------------------------------------------------------------------
 
-def test_read_all_order(db):
-    for i in range(3):
-        append_block(db, layer=1, layer_type="task",
-                     compressed_state=f"s{i}", reasoning=f"r{i}")
-    blocks = read_all(db)
-    ids = [b["id"] for b in blocks]
-    assert ids == sorted(ids)
+def test_consequence_is_the_only_permitted_mutation(db_with_genesis, wal):
+    """
+    Updating consequence must not break chain integrity because consequence
+    is excluded from the hash. All other mutations break the chain.
+    """
+    b = append_block(db_with_genesis, wal, layer=1, layer_type="task",
+                     compressed_state="s", reasoning="r")
+    record_consequence(db_with_genesis, b["this_hash"], "output was good")
+    ok, reason = verify_chain(db_with_genesis)
+    assert ok, reason
+
+
+def test_consequence_update_on_missing_hash_raises(db_with_genesis):
+    with pytest.raises(ValueError):
+        record_consequence(db_with_genesis, "nonexistent_hash", "irrelevant")
+
+
+def test_cannot_insert_duplicate_hash(db_with_genesis, wal):
+    b = append_block(db_with_genesis, wal, layer=1, layer_type="task",
+                     compressed_state="s", reasoning="r",
+                     timestamp="2026-01-01T00:00:00+00:00")
+    with pytest.raises(sqlite3.IntegrityError):
+        db_with_genesis.execute(
+            """INSERT INTO chain_blocks
+               (layer, layer_type, timestamp, prev_hash, compressed_state,
+                reasoning, commitment_level, this_hash)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (b["layer"], b["layer_type"], b["timestamp"], b["prev_hash"],
+             b["compressed_state"], b["reasoning"], b["commitment_level"],
+             b["this_hash"]),
+        )

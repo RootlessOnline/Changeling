@@ -131,6 +131,7 @@ Grammar must be perfectly lossless — validated at boot.
 - [x] Block reader (by layer, by type, by fault)
 - [x] Fault checker (pre-task lookup)
 - [x] Tests passing
+- [x] REBUILT per v3 spec: changeling/ package, consequence + commitment_level fields, WAL, genesis block, 67 tests passing
 
 ### Phase 2 — Sefirot scorer
 - [ ] Ollama call wrapper
@@ -174,6 +175,13 @@ Grammar must be perfectly lossless — validated at boot.
 2026-03-27 — .claude/ excluded from repo (contains local Claude Code settings)
 2026-03-27 — Phase 2 not yet started — awaiting strategy confirmation from web chat
 2026-03-27 — Phase 1 complete, 23 tests passing. Claude Code must update CONTEXT.md checkboxes and Decisions Log before every push — this is mandatory.
+2026-03-27 — Phase 1 REBUILT per CONTEXT_v3 spec: changeling/ package replaces core/chain_memory.py
+2026-03-27 — Schema updated: consequence + commitment_level fields added per v3
+2026-03-27 — Genesis block: prev_hash="" (not "GENESIS"), commitment_level="sealed"
+2026-03-27 — Hash covers: layer, layer_type, timestamp, prev_hash, compressed_state, fault, reasoning, commitment_level — consequence excluded (mutable Malkuth feedback)
+2026-03-27 — WAL implemented: plain file, newline-delimited JSON, pending/committed/interrupted entries
+2026-03-27 — 67 tests passing across 4 test files: test_chain, test_queries, test_faults, test_wal
+2026-03-27 — record_consequence() is the only permitted chain mutation (fills Malkuth feedback post-hoc)
 2026-03-27 — Phase 1 complete, 23 tests passing
 2026-03-27 — Phase 2 NOT started yet — awaiting design
 2026-03-27 — Critical design decision: Sefirot is a topology not 11 independent scores. Three pillars (Mercy/Severity/Balance), three triads (Supernal/Ethical/Astral), two flows (lightning bolt down = creation, return path up = reflection). 22 paths define relationship quality between nodes. This must be fully designed before Phase 2 code is written.
