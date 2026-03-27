@@ -170,3 +170,6 @@ Grammar must be perfectly lossless — validated at boot.
 2026-03-27 — Primary model: qwen2.5:14b via Ollama
 2026-03-27 — Claude Code handles building, web chat handles strategy
 2026-03-27 — CONTEXT.md kept in GitHub so Claude web chat can fetch and read it
+2026-03-27 — Phase 1 complete: chain memory core built and 23 tests passing
+2026-03-27 — .claude/ excluded from repo (contains local Claude Code settings)
+2026-03-27 — Phase 2 not yet started — awaiting strategy confirmation from web chat
