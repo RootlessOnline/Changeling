@@ -619,14 +619,14 @@ TIER 4 — Emergent from Tiers 1-3 being healthy
 - [x] Tests (67 passing)
 
 ### Phase 2 — Soul Graph Topology
-- [ ] NetworkX node graph with 11-dimension Sefirot vectors
-- [ ] 22 path weight system
-- [ ] Path health algorithms
-- [ ] Triadic balance (Mother path health)
-- [ ] Pillar tension (aggregate)
-- [ ] Soul-weight distance metric
-- [ ] Keter attractor identification
-- [ ] Anti-resonance boundary computation
+- [x] NetworkX node graph with 11-dimension Sefirot vectors
+- [x] 22 path weight system
+- [x] Path health algorithms
+- [x] Triadic balance (Mother path health)
+- [x] Pillar tension (aggregate)
+- [x] Soul-weight distance metric
+- [x] Keter attractor identification
+- [x] Anti-resonance boundary computation
 
 ### Phase 3 — Cognitive Core
 - [ ] Keter engine
@@ -718,3 +718,14 @@ TIER 4 — Emergent from Tiers 1-3 being healthy
 2026-03-28 — record_consequence() is the only permitted chain mutation
 2026-03-28 — WAL: plain newline-delimited JSON, pending→committed→interrupted lifecycle, crash recovery verified
 2026-03-28 — Phase 2 not started — awaiting design confirmation
+2026-03-27 — Phase 2 complete. 218 tests passing (67 Phase 1 + 151 Phase 2).
+2026-03-27 — soul/ package built: soul_graph.py, sefirot_engine.py, path_health.py, connection_engine.py, seed.py, graph_persistence.py, integration.py
+2026-03-27 — Sefirot vectors always computed fresh (never stored) — topology IS the state
+2026-03-27 — Chochmah_novelty stored at insertion: betweenness centrality at first connection time
+2026-03-27 — Bidirectional connections = 2 directed edges in DiGraph (forward + ascending reverse)
+2026-03-27 — Seed path types use node_type semantic mapping, not Sefirot vectors (too small at seed time)
+2026-03-27 — graph_persistence: load bypasses add_node to skip betweenness recalculation on restore
+2026-03-27 — ChainGraphIntegration: all graph mutations write chain blocks (layer=2, sealed for adds/connections, experimental for updates)
+2026-03-27 — node_accessed writes block only every 10th access to avoid chain bloat
+2026-03-27 — seed_nodes.json: 11 seed nodes + 21 connections, loadable/refinable without code changes
+2026-03-27 — Claude Code must update CONTEXT.md checkboxes and Decisions Log before every push — mandatory
